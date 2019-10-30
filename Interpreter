@@ -1,0 +1,161 @@
+
+let rec read_line (ic: in_channel): string list =
+  match input_line ic with
+  | s -> s::(read_line ic)
+  | exception End_of_file -> []
+
+let rec printing (l: string list) (oc: out_channel) : unit =
+  match l with
+  |x::xs -> let () = Printf.fprintf oc "%s\n" x in printing xs oc
+  |[] -> ()
+  
+type const = I of int | B of bool | Error | S of string | N of string | Unit
+
+type programs = Quit | PushI of const | PushB of const | PushS of const | PushN of const | Push of const | Add | Sub | Mul | Div | Rem | Neg | Swap | Pop
+
+let alphanum = 'a'::'b'::'c'::'d'::'e'::'f'::'g'::'h'::'i'::'j'::'k'::'l'::'m'::'n'::'o'::'p'::'q'::'r'::'s'::'t'::'u'::'v'::'x'::'w'::'y'::'z'::'A'::'B'::'C'::'D'::'E'::'F'::'G'::'H'::'I'::'J'::'K'::'L'::'M'::'N'::'O'::'P'::'Q'::'R'::'S'::'T'::'U'::'V'::'W'::'X'::'Y'::'Z'::'1'::'2'::'3'::'4'::'5'::'6'::'7'::'8'::'9'::'0'::[]
+
+let rec checker(l : char list) (s:string) : bool =
+  match l with
+  |x::xs -> if(String.contains s x) then true else checker xs s
+  |_ -> false
+
+let pushint (s : string) : const =
+  try ignore (int_of_string s); I(int_of_string s)
+  with _ -> Error
+  
+  
+let pushstr (s:string) : const =
+  if String.get s 0 == '"' && String.get s (String.length(s) - 1) == '"' == true
+  then S(String.sub s 1 (String.length(s) - 2))
+  else Error
+
+let pushname (s:string) : const =
+  let x = String.sub s 0 1 in
+  if String.contains x 'a' || String.contains x 'b' ||  String.contains x 'c' ||  String.contains x 'd' ||  String.contains x 'e' ||  String.contains x 'f' ||  String.contains x 'g' ||  String.contains x 'h' ||  String.contains x 'i' ||  String.contains x 'j' ||  String.contains x 'k' ||  String.contains x 'l' ||  String.contains x 'm' ||  String.contains x 'n' ||  String.contains x 'o' ||  String.contains x 'p' ||  String.contains x 'q' ||  String.contains x 'r' ||  String.contains x 's' ||  String.contains x 't' ||  String.contains x 'u' ||  String.contains x 'v' ||  String.contains x 'w' ||  String.contains x 'x' ||  String.contains x 'y' ||  String.contains x 'z' ||String.contains x 'A' || String.contains x 'B' ||  String.contains x 'C' ||  String.contains x 'D' ||  String.contains x 'E' ||  String.contains x 'F' ||  String.contains x 'G' ||  String.contains x 'H' ||  String.contains x 'I' ||  String.contains x 'J' ||  String.contains x 'K' ||  String.contains x 'L' ||  String.contains x 'M' ||  String.contains x 'N' ||  String.contains x 'O' ||  String.contains x 'P' ||  String.contains x 'Q' ||  String.contains x 'R' ||  String.contains x 'S' ||  String.contains x 'T' ||  String.contains x 'U' ||  String.contains x 'V' ||  String.contains x 'W' ||  String.contains x 'X' ||  String.contains x 'Y' ||  String.contains x 'Z' || String.contains x '_'
+  then if checker alphanum s == true then N(s) else Error
+  else Error
+
+let pushbool (s:string) : const=
+  match s with
+  |"<false>" -> B(false)
+  |"<true>" -> B(true)
+  | _ -> Error
+
+let pusherror (s:string) : const =
+  match s with
+  |"<unit>" -> Unit
+  | _ -> Error
+
+
+let rec printconst (c: const) : string =
+  match c with
+  |I(i) -> Printf.sprintf "%d" i
+  |S(s) -> s
+  |N(n) -> n
+  |B(b) -> "<" ^ string_of_bool b ^ ">"
+  |Error -> "<error>"
+  |Unit -> "<unit>"
+
+
+
+let popf (c:const list) : const list =
+  match c with
+  |x::xs -> xs
+  | _ -> Error::c
+
+let addf (c:const list) : const list =
+  match c with
+  |I(x)::I(x1)::xs -> I(x+x1)::xs
+  | _ -> Error::c
+
+
+let subf (c:const list) : const list =
+  match c with
+  |I(x)::I(x1)::xs -> I(x-x1)::xs
+  | _ -> Error::c
+
+let mulf (c:const list) : const list =
+  match c with
+  |I(x)::I(x1)::xs -> I(x*x1)::xs
+  | _ -> Error::c
+  
+let divf (c:const list) : const list =
+  match c with
+  | _ ::I(0)::xs -> Error::c
+  |I(x)::I(x1)::xs -> I(x/x1)::xs
+  | _ -> Error::c
+
+let remf (c:const list) : const list =
+  match c with
+  | _ ::I(0)::xs -> Error::c
+  |I(x)::I(x1)::xs -> I(x mod x1)::xs
+  | _ -> Error::c
+
+let negf (c:const list) : const list =
+  match c with
+  |I(x)::xs -> I(-x)::xs
+  | _ -> Error::c
+
+let swapf (c: const list) : const list =
+  match c with
+  |x::x1::xs -> x1::x::xs
+  | _ -> Error::c
+
+
+let helper (s:string) : programs =
+  let words = String.split_on_char ' ' s in
+  match words with
+  |"PushI"::xs -> PushI(pushint (String.sub s 6 (String.length(s) - 6)))
+  |"PushS"::xs -> PushS(pushstr (String.sub s 6 (String.length(s) - 6)))
+  |"PushN"::xs -> PushN(pushname (String.sub s 6 (String.length(s) - 6)))
+  |"PushB"::xs -> PushB(pushbool (String.sub s 6 (String.length(s) - 6)))
+  |"Push"::xs -> Push(pusherror (String.sub s 5 (String.length(s) - 5)))
+  |"Pop"::xs -> Pop
+  |"Add"::xs -> Add
+  |"Sub"::xs -> Sub
+  |"Mul"::xs -> Mul
+  |"Div"::xs -> Div
+  |"Rem"::xs -> Rem
+  |"Neg"::xs -> Neg
+  |"Swap"::xs -> Swap
+  |"Quit"::xs -> Quit
+  |x::xs -> Push(Error)
+  
+
+let rec execPrograms (l:string list) : programs list = 
+  match l with
+  |x::xs -> helper x :: execPrograms xs
+  |[] -> []
+
+
+  let rec execProgramf (program: programs list) (c: const list) : const list =
+    match program with
+    |hd::tl -> (match hd with
+                |PushI(x) -> execProgramf tl (x::c)
+                |PushS(x) -> execProgramf tl (x::c)
+                |PushN(x) -> execProgramf tl (x::c)
+                |PushB(x) -> execProgramf tl (x::c)
+                |Push(x) -> execProgramf tl (x::c)
+                |Pop -> execProgramf tl (popf c)
+                |Add -> execProgramf tl (addf c)
+                |Sub -> execProgramf tl (subf c)
+                |Mul -> execProgramf tl (mulf c)
+                |Div -> execProgramf tl (divf c)
+                |Rem -> execProgramf tl (remf c)
+                |Neg -> execProgramf tl (negf c)
+                |Swap -> execProgramf tl (swapf c)
+                |Quit -> c)
+    | [] -> c
+
+let interpreter (input : string) (output : string) : unit =
+  let ic = open_in input in
+  let oc = open_out output in
+  let line = read_line ic in
+  let program = execPrograms line in
+  let functions = execProgramf program [] in
+  let strings = List.map printconst functions in
+  let _ = printing strings oc in
+  let _ = close_in ic in
+  let _ = close_out oc in
+  ()
