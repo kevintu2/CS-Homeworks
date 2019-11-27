@@ -1,161 +1,395 @@
 
-let rec read_line (ic: in_channel): string list =
-  match input_line ic with
-  | s -> s::(read_line ic)
-  | exception End_of_file -> []
-
-let rec printing (l: string list) (oc: out_channel) : unit =
-  match l with
-  |x::xs -> let () = Printf.fprintf oc "%s\n" x in printing xs oc
-  |[] -> ()
+type stackVal = 
+  | I of int 
+  | S of string 
+  | N of string
+  | B of bool 
+  | U
+  | E
+  | Closure of string * (command list) * env
+  | InOutClosure of string * (command list) * env
   
-type const = I of int | B of bool | Error | S of string | N of string | Unit
+(* But we will also use this for binding variables, 
+   as long as we remember variables cannot be bound to errors, or directly to names *)
+  
 
-type programs = Quit | PushI of const | PushB of const | PushS of const | PushN of const | Push of const | Add | Sub | Mul | Div | Rem | Neg | Swap | Pop
+(* well formed instructions *)
+and command = PushI of stackVal 
+             | PushS of stackVal 
+             | PushN of stackVal 
+             | PushB of stackVal
+             | Push of stackVal
+             | Add | Sub | Mul | Div | Rem | Neg
+             | Concat
+             | And | Or | Not
+             | Equal | LessThan
+             | If
+             | Pop
+             | Swap
+             | Block of command list (* handle blocks together *)
+             | Createfun of (string * string * (command list))
+             | InOutFun of (string * string * (command list))
+             | Return
+             | Bind
+             | Call
+             | Quit
 
-let alphanum = 'a'::'b'::'c'::'d'::'e'::'f'::'g'::'h'::'i'::'j'::'k'::'l'::'m'::'n'::'o'::'p'::'q'::'r'::'s'::'t'::'u'::'v'::'x'::'w'::'y'::'z'::'A'::'B'::'C'::'D'::'E'::'F'::'G'::'H'::'I'::'J'::'K'::'L'::'M'::'N'::'O'::'P'::'Q'::'R'::'S'::'T'::'U'::'V'::'W'::'X'::'Y'::'Z'::'1'::'2'::'3'::'4'::'5'::'6'::'7'::'8'::'9'::'0'::[]
 
-let rec checker(l : char list) (s:string) : bool =
-  match l with
-  |x::xs -> if(String.contains s x) then true else checker xs s
-  |_ -> false
+(* If we limit our interactions with the environment to these helper functions, we can safely change how we encode the environment without changing much other code *)
+and env = (string * stackVal) list
+let insert (s:string) (sv : stackVal) (env: env) : env = (s,sv)::env
 
-let pushint (s : string) : const =
-  try ignore (int_of_string s); I(int_of_string s)
-  with _ -> Error
+let rec fetch (name :string)  (env: (string * stackVal) list) : stackVal option = 
+    match env with
+      | (name' , v) :: rest -> if name = name' then Some v else fetch name rest
+      | []                  -> None
+      
+let empEnv = []
+
+
+let rec run (commands : command list) (stack: stackVal list) (env: env) : (stackVal list * env) = 
+  (* if stackVal is a variable what  does it resolve to in the current environment *)
+  let res (sv : stackVal) : stackVal = 
+    match sv with 
+      | N n -> (match fetch n env with  
+                  | Some n' -> n' 
+                  | None    -> N n)
+      | sv -> sv
+  in let bad rest : stackVal list * env = run rest (E :: stack) env (* everything fails in the same way*)
+  in match (commands , stack)  with
+  | (Quit        :: _   , _         ) -> (stack,env)
+  | ([]                 , _         ) -> (stack,env) (*to fix the no return error make a thing that checks if it is in a function and pattern match it here to go different routes*)
+  
+  | (PushI (I i) :: rest, _         ) -> run rest (I i :: stack) env
+  
+  | (PushS (S s) :: rest, _         ) -> run rest (S s :: stack) env
+  
+  | (PushN (N n) :: rest, _         ) -> run rest (N n :: stack) env
+  
+  | (PushB (B b) :: rest, _         ) -> run rest (B b :: stack) env
+  
+  | (Push U      :: rest, _         ) -> run rest (U :: stack) env
+  | (Push E      :: rest, _         ) -> run rest (E :: stack) env
+  
+  | (Add         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I j) -> run rest (I (i+j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Sub         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I j) -> run rest (I (i-j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Mul         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I j) -> run rest (I (i*j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Div         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I 0) -> bad rest
+                                          | (I i, I j) -> run rest (I (i/j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Rem         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I 0) -> bad rest
+                                          | (I i, I j) -> run rest (I (i mod j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Neg         :: rest, x :: s'   ) -> (match (res x) with 
+                                          | (I i) -> run rest (I (-i) :: s') env 
+                                          | _ -> bad rest)
+
+  | (Concat      :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (S i, S j) -> run rest (S (i ^ j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (And         :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (B i, B j) -> run rest (B (i && j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Or          :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (B i, B j) -> run rest (B (i || j) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Not         :: rest, x :: s'   ) -> (match (res x) with 
+                                          | (B i) -> run rest (B (not i) :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Equal       :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I j) -> run rest (B (i = j) :: s') env 
+                                          | _ -> bad rest)
+
+  | (LessThan    :: rest, x ::y ::s') -> (match (res x, res y) with 
+                                          | (I i, I j) -> run rest (B (i < j) :: s') env 
+                                          | _ -> bad rest)
+                                             
+  | (If          :: rest,x::y::z::s') -> (match res z with 
+                                          | B true  -> run rest (y :: s') env 
+                                          | B false -> run rest (x :: s') env 
+                                          | _ -> bad rest)
+  
+  | (Pop         :: rest, _ :: s'   ) -> run rest s' env
+  
+  | (Swap        :: rest, x ::y ::s') -> run rest (y::x::s') env
   
   
-let pushstr (s:string) : const =
-  if String.get s 0 == '"' && String.get s (String.length(s) - 1) == '"' == true
-  then S(String.sub s 1 (String.length(s) - 2))
-  else Error
+  | (Bind        :: rest, N n::x::s') -> (match res x with
+                                          | E   -> bad rest
+                                          | N _ -> bad rest (* if the variable is unound we get an error *)
+                                          | sv  -> run rest (U :: s') (insert n sv env)) 
+  
+  | (Block ls    :: rest, s'        ) -> let (top :: _, _) = run ls [] env (* an exception will be thown if the resulting stack is empty *)
+                                         in  run rest (top :: s') env
 
-let pushname (s:string) : const =
-  let x = String.sub s 0 1 in
-  if String.contains x 'a' || String.contains x 'b' ||  String.contains x 'c' ||  String.contains x 'd' ||  String.contains x 'e' ||  String.contains x 'f' ||  String.contains x 'g' ||  String.contains x 'h' ||  String.contains x 'i' ||  String.contains x 'j' ||  String.contains x 'k' ||  String.contains x 'l' ||  String.contains x 'm' ||  String.contains x 'n' ||  String.contains x 'o' ||  String.contains x 'p' ||  String.contains x 'q' ||  String.contains x 'r' ||  String.contains x 's' ||  String.contains x 't' ||  String.contains x 'u' ||  String.contains x 'v' ||  String.contains x 'w' ||  String.contains x 'x' ||  String.contains x 'y' ||  String.contains x 'z' ||String.contains x 'A' || String.contains x 'B' ||  String.contains x 'C' ||  String.contains x 'D' ||  String.contains x 'E' ||  String.contains x 'F' ||  String.contains x 'G' ||  String.contains x 'H' ||  String.contains x 'I' ||  String.contains x 'J' ||  String.contains x 'K' ||  String.contains x 'L' ||  String.contains x 'M' ||  String.contains x 'N' ||  String.contains x 'O' ||  String.contains x 'P' ||  String.contains x 'Q' ||  String.contains x 'R' ||  String.contains x 'S' ||  String.contains x 'T' ||  String.contains x 'U' ||  String.contains x 'V' ||  String.contains x 'W' ||  String.contains x 'X' ||  String.contains x 'Y' ||  String.contains x 'Z' || String.contains x '_'
-  then if checker alphanum s == true then N(s) else Error
-  else Error
+  | (Call        :: rest, parameter :: name :: s') -> (match ((res parameter),(res name)) with
+                                                      | (N _, _) -> bad rest
+                                                      | (E, _) -> bad rest
+                                                      | (sv, Closure (param ,cl,funcenv)) -> (match run cl [] (insert param sv funcenv) with
+                                                                                    | (x :: _,_) -> run rest (x::s') env 
+                                                                                    | (_ , _) -> bad rest)
+                                                      | (sv, InOutClosure (param ,cl,funcenv)) -> (match run cl stack (insert param sv funcenv) with
+                                                                                      | (x :: _, funcenv) -> (match (parameter, fetch param funcenv) with
+                                                                                                                | (N n, Some value) -> run rest (s') (insert n value env)
+                                                                                                                | _ -> bad rest
+                                                                                      )
+                                                                                      | ([], funcenv) -> bad rest                  
+                                                      ) 
+                                                      | (sv, _) -> bad rest
+  )
 
-let pushbool (s:string) : const=
+  | (Createfun (n, parameter, closure)  :: rest, s') -> let cl = Closure (parameter, closure, env) in run rest (U :: s') (insert n cl env)
+
+  | (InOutFun (n, parameter, closure) :: rest, s') -> let cl = InOutClosure (parameter, closure, env) in run rest (U :: s') (insert n cl env)
+  
+  | (Return      :: rest, x:: _   ) -> ((res x) :: [],env)
+
+  | (_           :: rest, _         ) -> bad rest
+
+
+  
+  
+  
+(* remember to test! *)
+let e2 = run [PushI (I 1); PushI (I 1); Add] [] empEnv
+let e3 = run [PushN (N "x"); PushI (I 1); Add] [] (insert "x" (I 7) empEnv)
+let e4 = run [PushN (N "x"); PushI (I 1); Add] [] empEnv
+let e5 = run [PushI (I 500); PushI (I 2); Mul; PushI (I 2);  Div] [] empEnv
+let e6 = run [PushS (S "world!"); PushS (S "hello "); Concat] [] empEnv
+let e7 = run [PushI (I 7); PushI (I 8); LessThan] [] empEnv
+let e8 = run [PushI (I 7); PushI (I 7); Equal] [] empEnv
+let e9 = run [PushI (I 13); PushN (N "a"); Bind; PushI (I 3); PushN (N "name1"); Bind;  PushN (N "a"); PushN (N "name1"); Add] [] empEnv
+let e10 = run [PushB (B true); PushS (S "o"); PushS (S "j"); If] [] empEnv
+(* ... *)
+
+
+(* writing *)
+let to_string (s : stackVal) : string = 
   match s with
-  |"<false>" -> B(false)
-  |"<true>" -> B(true)
-  | _ -> Error
-
-let pusherror (s:string) : const =
-  match s with
-  |"<unit>" -> Unit
-  | _ -> Error
-
-
-let rec printconst (c: const) : string =
-  match c with
-  |I(i) -> Printf.sprintf "%d" i
-  |S(s) -> s
-  |N(n) -> n
-  |B(b) -> "<" ^ string_of_bool b ^ ">"
-  |Error -> "<error>"
-  |Unit -> "<unit>"
-
-
-
-let popf (c:const list) : const list =
-  match c with
-  |x::xs -> xs
-  | _ -> Error::c
-
-let addf (c:const list) : const list =
-  match c with
-  |I(x)::I(x1)::xs -> I(x+x1)::xs
-  | _ -> Error::c
-
-
-let subf (c:const list) : const list =
-  match c with
-  |I(x)::I(x1)::xs -> I(x-x1)::xs
-  | _ -> Error::c
-
-let mulf (c:const list) : const list =
-  match c with
-  |I(x)::I(x1)::xs -> I(x*x1)::xs
-  | _ -> Error::c
-  
-let divf (c:const list) : const list =
-  match c with
-  | _ ::I(0)::xs -> Error::c
-  |I(x)::I(x1)::xs -> I(x/x1)::xs
-  | _ -> Error::c
-
-let remf (c:const list) : const list =
-  match c with
-  | _ ::I(0)::xs -> Error::c
-  |I(x)::I(x1)::xs -> I(x mod x1)::xs
-  | _ -> Error::c
-
-let negf (c:const list) : const list =
-  match c with
-  |I(x)::xs -> I(-x)::xs
-  | _ -> Error::c
-
-let swapf (c: const list) : const list =
-  match c with
-  |x::x1::xs -> x1::x::xs
-  | _ -> Error::c
-
-
-let helper (s:string) : programs =
-  let words = String.split_on_char ' ' s in
-  match words with
-  |"PushI"::xs -> PushI(pushint (String.sub s 6 (String.length(s) - 6)))
-  |"PushS"::xs -> PushS(pushstr (String.sub s 6 (String.length(s) - 6)))
-  |"PushN"::xs -> PushN(pushname (String.sub s 6 (String.length(s) - 6)))
-  |"PushB"::xs -> PushB(pushbool (String.sub s 6 (String.length(s) - 6)))
-  |"Push"::xs -> Push(pusherror (String.sub s 5 (String.length(s) - 5)))
-  |"Pop"::xs -> Pop
-  |"Add"::xs -> Add
-  |"Sub"::xs -> Sub
-  |"Mul"::xs -> Mul
-  |"Div"::xs -> Div
-  |"Rem"::xs -> Rem
-  |"Neg"::xs -> Neg
-  |"Swap"::xs -> Swap
-  |"Quit"::xs -> Quit
-  |x::xs -> Push(Error)
+  | I i -> string_of_int i 
+  | S s  -> s
+  | N n -> n
+  | B b -> "<" ^ string_of_bool b ^ ">"
+  | U   -> "<unit>"
+  | E   -> "<error>"
   
 
-let rec execPrograms (l:string list) : programs list = 
-  match l with
-  |x::xs -> helper x :: execPrograms xs
-  |[] -> []
+
+(* parser combinators over exploded strings *)
+let explode (s:string) : char list =
+  let rec expl i l =
+    if i < 0 
+    then l 
+    else expl (i - 1) (String.get s i :: l)
+  in expl (String.length s - 1) []
+
+let implode (cl:char list) : string = 
+  String.concat "" (List.map (String.make 1) cl)
+
+ 
+let is_alpha (c:char): bool = 
+  (Char.code 'a' <= Char.code c && Char.code c <= Char.code 'z')
+  || (Char.code 'A' <= Char.code c && Char.code c <= Char.code 'Z')
+
+let is_digit (c:char): bool = 
+ Char.code '0' <= Char.code c && Char.code c <= Char.code '9'
 
 
-  let rec execProgramf (program: programs list) (c: const list) : const list =
-    match program with
-    |hd::tl -> (match hd with
-                |PushI(x) -> execProgramf tl (x::c)
-                |PushS(x) -> execProgramf tl (x::c)
-                |PushN(x) -> execProgramf tl (x::c)
-                |PushB(x) -> execProgramf tl (x::c)
-                |Push(x) -> execProgramf tl (x::c)
-                |Pop -> execProgramf tl (popf c)
-                |Add -> execProgramf tl (addf c)
-                |Sub -> execProgramf tl (subf c)
-                |Mul -> execProgramf tl (mulf c)
-                |Div -> execProgramf tl (divf c)
-                |Rem -> execProgramf tl (remf c)
-                |Neg -> execProgramf tl (negf c)
-                |Swap -> execProgramf tl (swapf c)
-                |Quit -> c)
-    | [] -> c
+let is_funname (c:char): bool =
+  (Char.code 'a' <= Char.code c && Char.code c <= Char.code 'z')
+  || (Char.code 'A' <= Char.code c && Char.code c <= Char.code 'Z') || (Char.code '0' <= Char.code c && Char.code c <= Char.code '9')  || (c == '_')
 
-let interpreter (input : string) (output : string) : unit =
-  let ic = open_in input in
-  let oc = open_out output in
-  let line = read_line ic in
-  let program = execPrograms line in
-  let functions = execProgramf program [] in
-  let strings = List.map printconst functions in
-  let _ = printing strings oc in
+let rec take_while' (p: 'a -> bool) (es : 'a list) : ('a list) * ('a list) = 
+  match es with
+  | []      -> ([],[])
+  | x :: xs -> if p x then let (chars, rest) = take_while' p xs in  (x :: chars, rest) else ([], x :: xs)
+
+let take_while (p:char -> bool) (s:string) : string * string = 
+  let (echars, erest) = take_while' p (explode s) 
+  in (implode echars, implode erest)
+
+
+let parse_int (s : string) : int option = 
+    match int_of_string s with    
+    | n -> Some n
+    | exception _ -> None
+
+let parse_string (s : string) : string option = 
+    if String.length s > 1 && String.get s 0 = '"' && String.get s (String.length s - 1) = '"'
+    then  Some (String.sub s 1 (String.length s - 2)) (* this is less restrictive then the spec *)
+    else None
+
+
+let parse_name (s : string) : string option = 
+    if String.length s > 0 && ( let c = (String.get s 0) in is_alpha c ||  c = '_')
+    then  Some s (* this is less restrictive then the spec *)
+    else None
+    
+    
+    
+let parse_constant (s:string) : stackVal = 
+    let s' = String.trim s in
+    match s' with
+    | "<true>"  -> B true
+    | "<false>" -> B false
+    | "<unit>"  -> U
+    | _ -> match parse_int s' with
+           | Some i -> I i
+           | None -> match parse_string s' with
+                     | Some s -> S s
+                     | None -> match parse_name s' with
+                               | Some s -> N s
+                               | None -> E
+
+
+
+let parse_single_command (s:string) : command = 
+    match take_while is_alpha (String.trim s) with
+    | ("PushI"   , p) -> PushI (parse_constant p)
+    | ("PushS"   , p) -> PushS (parse_constant p)
+    | ("PushN"   , p) -> PushN (parse_constant p)
+    | ("PushB"   , p) -> PushB (parse_constant p)
+    | ("Push"    , p) -> Push (parse_constant p)
+    | ("Add"     , _) -> Add
+    | ("Sub"     , _) -> Sub
+    | ("Mul"     , _) -> Mul
+    | ("Div"     , _) -> Div
+    | ("Rem"     , _) -> Rem
+    | ("Neg"     , _) -> Neg
+    | ("Pop"     , _) -> Pop
+    | ("Swap"    , _) -> Swap
+    | ("Concat"  , _) -> Concat
+    | ("And"     , _) -> And
+    | ("Or"      , _) -> Or
+    | ("Not"     , _) -> Not
+    | ("LessThan", _) -> LessThan
+    | ("Equal"   , _) -> Equal
+    | ("If"      , _) -> If
+    | ("Bind"    , _) -> Bind
+    | ("Call"    , _) -> Call
+    | ("Return"  , _) -> Return
+    | ("Quit"    , _) -> Quit
+    (* any unknown commands will result in an exception *)
+
+ 
+(* parsing becomes harder, though it is doable with a "claver" helper function 
+this function had the name parse_block in lab 1 and 2.
+*)
+ 
+(* group together everything till you see an "End" return the rest for future work *)
+let rec parse_until_end (ls :string list) :  (command list) * (string list)  =  
+    match ls with 
+    | []              -> ([], [])
+    
+    | "End" ::     tl ->  ([], tl)
+    | "Begin" ::     tl ->  let (cls, rest) = parse_until_end tl
+                            in let block = Block cls
+                            in let (cls', rest') = parse_until_end rest
+                            in (block :: cls', rest')
+    | "FunEnd" :: tl -> ([],tl)
+    
+    | h ::     tl         -> match take_while is_funname (String.trim h) with
+                              | ("Fun", parameter) -> let (name, param) = take_while is_funname (String.trim parameter) in 
+                                let (cls, rest) = parse_until_end tl in
+                                let cfun = Createfun (String.trim name, String.trim param, cls) in
+                                let (cls',rest') = parse_until_end rest in (cfun :: cls', rest')
+                              | ("InOutFun", parameter) -> let (name, param) = take_while is_funname (String.trim parameter) in 
+                                let (cls, rest) = parse_until_end tl in
+                                let cfun = InOutFun (String.trim name, String.trim param, cls) in
+                                let (cls',rest') = parse_until_end rest in (cfun :: cls', rest')
+
+                              | _ ->
+                                let com = parse_single_command h
+                                in let (cls, rest) = parse_until_end tl
+                                in (com :: cls, rest)
+
+let pe0 = parse_until_end ["Fun test000"; "Call"]  
+let pe1 = parse_until_end ["Pop";"Pop";"Pop";"Pop"]
+let pe2 = parse_until_end ["Pop";"Pop";"End";"Pop";"Pop"]
+let pe3 = parse_until_end ["Begin";"Pop";"End";"Pop"]
+let pe4 = parse_until_end ["Begin";"Pop";"End";"Begin";"Begin";"Pop";"End";"Pop";"End";"Pop"]
+
+(* walk through a recursion *)
+let pe51 = parse_until_end ["Neg";"Neg";"End";"Pop";"Pop"] (* ([Neg, Neg] , ["Pop";"Pop"]) *)
+let pe52 = parse_until_end [      "Neg";"End";"Pop";"Pop"] (* ([     Neg] , ["Pop";"Pop"]) *)
+let pe53 = parse_until_end [            "End";"Pop";"Pop"] (* ([        ] , ["Pop";"Pop"]) *)
+
+
+let pe6 = parse_until_end ["PushB <true>";"Neg";"PushI 10";"Sub";"Quit"] (* ([PushB (B true); Neg; ...],[]) *)
+let pe7 = parse_until_end ["Neg";"Pop"] (* ([Neg, Pop],[]) *)
+let pe8 = parse_until_end ["Pop";"Neg";"Pop"] (* ([Pop,Neg, Pop],[]) *)
+
+(* walk through a recursion *)
+let pe91 = parse_until_end ["Pop";"Neg";"Pop";"End";"Sub";"Quit"] (* ([Pop,Neg, Pop],["Sub";"Quit"]) *)
+let pe92 = parse_until_end [      "Neg";"Pop";"End";"Sub";"Quit"] (* ([    Neg, Pop],["Sub";"Quit"]) *)
+let pe93 = parse_until_end [            "Pop";"End";"Sub";"Quit"] (* ([         Pop],["Sub";"Quit"]) *)
+let pe94 = parse_until_end [                  "End";"Sub";"Quit"] (* ([            ],["Sub";"Quit"]) *)
+
+
+
+let pe10 = parse_until_end [ "Begin";  "Begin";  "Pop" ;  "End";  "End"]
+
+
+let parse_commands (ls :string list) : command list =
+  let (coms, _) = parse_until_end ls 
+  in coms
+  
+let pe20 = parse_commands ["PushB <true>";"Neg";"PushI 10";"Sub";"Quit"]
+let pe21 = parse_commands [ "Begin"; "Begin"; "Pop" ; "End"; "End"]
+
+let pe22 = parse_commands [ "Begin"; "Pop" ; "End";] (*  [Block [Pop]] *)
+
+let pe23 = parse_commands [ "Begin"; "Begin"; "Pop" ; "End"; "Begin"; "Pop" ; "End"; "End"] (* [Block [Block [Pop]; Block [Pop]] *)
+let pe24 = parse_commands [ "Pop" ; "End"; "Pop" ; "Pop" ] (*  ([Pop], ["Pop" ; "Pop" ] ) *)
+
+let rec read_lines (ch : in_channel) : string list =
+  match input_line ch with 
+    | str                    -> str :: read_lines ch
+    | exception  End_of_file -> [] (* input_line throws an exception at the end of the file *)
+    
+    
+(* from lab 3 *)
+let rec write_lines (ch) (ls : string list ) : unit =
+  match ls with
+    | []      -> ()
+    | x :: xs -> let _ = Printf.fprintf ch "%s\n" x in write_lines ch xs
+
+  
+(* TODO file IO stuff *)
+
+let interpreter (inputFile : string) (outputFile : string) : unit =
+  let ic = open_in inputFile in
+  let lines_in = List.map String.trim (read_lines ic) in
   let _ = close_in ic in
-  let _ = close_out oc in
-  ()
+  
+  let commands = parse_commands lines_in in
+  let (stack,_) = run commands [] empEnv in
+  let lines_out = List.map to_string stack in
+  
+  let oc = open_out outputFile in
+  let _ = write_lines oc lines_out in
+  let _ = close_out oc in ()
+
+let test (inputFile: string) : command list =
+  let ic = open_in inputFile in
+  let lines_in = List.map String.trim (read_lines ic) in
+  let _ = close_in ic in
+  
+  let commands = parse_commands lines_in in commands
