@@ -1,0 +1,42 @@
+let read_line (inc:in_channel) : string option =
+  match input_line inc with
+  | l -> Some l
+  | exception End_of_file -> None
+
+
+
+
+
+let ostring(r: string option) : string =
+  match r with
+  |Some r -> r
+  |None -> ""
+
+
+  
+let checker (r: string ): bool =
+if String.contains r 'a' && String.contains r 'b' &&  String.contains r 'c' &&  String.contains r 'd' &&  String.contains r 'e' &&  String.contains r 'f' &&  String.contains r 'g' &&  String.contains r 'h' &&  String.contains r 'i' &&  String.contains r 'j' &&  String.contains r 'k' &&  String.contains r 'l' &&  String.contains r 'm' &&  String.contains r 'n' &&  String.contains r 'o' &&  String.contains r 'p' &&  String.contains r 'q' &&  String.contains r 'r' &&  String.contains r 's' &&  String.contains r 't' &&  String.contains r 'u' &&  String.contains r 'v' &&  String.contains r 'w' &&  String.contains r 'x' &&  String.contains r 'y' &&  String.contains r 'z' 
+then true 
+else false
+
+
+
+let rec readloop (ic : in_channel) (oc : out_channel): unit =
+  let l = (read_line ic) in
+  match l with 
+  |Some l -> Printf.fprintf oc "%B\n" (checker l) ; readloop ic oc  
+  |None -> ()
+
+
+
+
+let pangram(str : string * string) : unit  =
+
+let (string1,string2) = str in
+
+let ic=open_in string1 in 
+let oc=open_out string2 in 
+let _ = readloop ic oc in
+let _ = close_in ic in
+let _ = close_out oc in
+();;       
