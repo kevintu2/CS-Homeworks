@@ -1,0 +1,198 @@
+type 'a str = Cons of 'a * ('a stream)
+   and  
+'a stream = unit -> 'a str
+
+
+let head (s: 'a stream) = let Cons(a, _) = s() in a
+let tail (s: 'a stream) = let Cons(_, tl)= s() in tl
+
+let rec take (n:int) (s: 'a stream) : 'a list = 
+  if n>0 then 
+  (head s) :: (take (n-1) (tail s))
+  else []
+
+let rec map (f: 'a -> 'b) (s:'a stream) : 'b stream =
+  fun () -> Cons (f (head s), map f (tail s))
+                      
+let rec zip f s1 s2 () = Cons (f (head s1) (head s2), zip f (tail s1) (tail s2))
+
+let rec filter (s: 'a stream) (p: 'a -> bool) : 'a stream = 
+   if p (head s)  then fun () -> Cons (head s, filter (tail s) p)
+   else 
+     (filter (tail s) p)
+
+let rec sieve (s: int stream) : int stream =
+     fun () -> Cons(head s, 
+        sieve (filter (tail s) (fun x -> x mod (head s) <> 0)))
+
+let rec nums_from (i: int) : int stream = fun () -> Cons (i, nums_from (i+1))
+
+let rec nats : int stream = nums_from 0
+
+let primes : int stream = sieve (nums_from 2)
+
+let even x= (x mod 2) = 0
+let odd  x= (x mod 2) = 1
+
+let rec fibs () = Cons (0,fun () -> Cons(1, zip (+) fibs (tail fibs)))
+let rec ones = fun () -> Cons (1, ones)
+let rec zeros = fun () -> Cons (0, zeros)
+
+                            
+                               (*************************************)
+                               (*************************************)
+                               (******  ASSIGNMENT STARTS HERE ******)
+                               (*************************************)
+                               (*************************************)
+
+(*  define evens: int stream
+ *  as the stream of all even natural 
+ *  numbers
+ *)
+let (evens: int stream) = 
+  filter nats even
+ (* write here your code *)
+
+
+
+
+
+
+(*  define odds: int stream
+ *  as the stream of all odd natural 
+ *  numbers
+ *)
+let (odds: int stream) = 
+  filter nats odd
+ (* write here your code *)
+
+
+
+
+
+(*   
+  define squares : int stream
+  as the stream of all perfect squares
+  of natural numbers. 
+*)
+let square x = x * x
+
+let (squares : int stream) = 
+  map square nats
+ (* write here your code *)
+
+
+
+
+
+(*   
+    define evenFibs: int stream
+    the stream of even Fibonacci numbers
+    in increasing order.
+ *)
+let (evenFibs: int stream) =
+  filter fibs even
+ (* write here your code *)
+
+
+
+
+
+
+(* 
+  define mulThrees: int stream 
+  the stream of multiples of three 
+  in increasing order.
+ *)
+
+let multhree x = (x mod 3) = 0
+
+let (mulThrees: int stream) = 
+  filter nats multhree
+ (* write here your code *)
+
+
+(* 
+  Define a function split_on_p: 'a stream -> ('a -> bool) -> ('a stream) * ('a stream) 
+  that takes as inputs a stream of elements of type 'a and a
+  predicate p:'a -> bool over 'a and returns a pair of  streams  where the
+  first stream contains the elements of the input stream that satisfy
+  p, while the second stream contains  the elements of the
+  input stream that do not satisfy p.
+ *)
+ let rec unfilter (s: 'a stream) (p: 'a -> bool) : 'a stream = 
+  if p (head s)  then unfilter (tail s) p
+  else 
+  fun () -> Cons (head s, unfilter (tail s) p)
+
+let rec split_on_p (a:'a stream) (p: 'a -> bool) : ('a stream) * ('a stream) =  
+ (* write here your code *)
+ ((filter a p), (unfilter a p))
+
+
+
+
+
+(* 
+ *  define a function stream_zip: 'a stream -> 'b stream -> ('a * 'b) stream that
+ *  takes two streams of elements and returns a stream of the paired elements.
+ *  For instance given the streams of natural numbers greater than 0,  
+ *  and the streams of primes, stream_zip should return a stream of pairs of integers 
+ *  where each pairs is of the form (i, pi) where pi is the i-th prime number, for i>0.
+*)
+let rec stream_zip (s1: 'a stream) (s2: 'b stream): ('a * 'b) stream = 
+ (* write here your code *)
+fun () -> Cons ((head s1, head s2) , stream_zip (tail s1) (tail s2))
+
+
+
+
+
+
+
+(* 
+  define a function
+  stream_unzip: (’a * ’b) stream -> (’a stream * ’b stream)
+  that takes as inputs a stream of pairs of elements of type ’a * ’b, 
+  and produces a pair of streams, the first containing only elements 
+  of type ’a and the second containing only elements of type ’b.
+ *)
+
+let rec stream_unzip (abstream : ('a * 'b) stream) : ('a stream * 'b stream) = 
+ (* write here your code *)
+let (a,b) = head abstream in
+(( fun () -> Cons ( a, let (astream, _) = stream_unzip (tail abstream) in astream)), (fun () -> Cons (b , let (_,bstream) = stream_unzip (tail abstream) in bstream)))
+
+
+
+
+
+
+
+(* 
+ *  define a function incremental_map : ('a -> 'a ) -> a' -> 'a stream
+ *  that given a function f, and an element a of type 'a 
+ *  produces the stream of elements a, (f a), (f (f a)), (f (f (f a))), (f (f (f (f a)))).... 
+ *)
+let rec incremental_map (f: 'a -> 'a) (a: 'a): 'a stream = 
+ (* write here your code *)
+fun () -> Cons (a, incremental_map f (f a))
+
+
+
+
+
+
+(*
+ *  Use incremental_map to define a stream of floats called exp_seq in which the i-th element is 
+ *  the (i-1)-th element squared, starting from 2, i.e. 2, 4, 16, 256, 65536...
+ *  This stream can be seen as the sequence of values of the mathematical sequence
+ *  n-> exp(2, exp(2, n)), for n=0,1,2...
+ *)
+let exp x = x *. x
+let (exp_seq: float stream) = 
+ (* write here your code *)
+incremental_map exp 2.0
+
+
+
