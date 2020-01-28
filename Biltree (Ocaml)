@@ -1,0 +1,130 @@
+(*  define a function write_list_int: string -> int list -> unit
+ *  that takes the name of a file, a list of integers and writes
+ *  all the elements of the list in the file, from left to right, 
+ *  one per line, and then returns unit.
+ *  Remember to close any possible channel before ending.
+ *)
+
+ let rec helper (oc:out_channel) (l: int list) : unit =
+  match l with
+    |x::xs -> let _ = Printf.fprintf oc "%d\n" x in helper oc xs
+    |[] -> ()
+
+
+let write_list_int (s: string) (l: int list): unit =
+  (* please replace the expression () below with your code *)
+let oc = open_out s in
+let _ = helper oc l in
+let _ = close_out oc in()
+
+
+(*  define a function read_list_int_rev: string -> int list
+ *  that takes the name of a text file (which contains one integer per line) 
+ *  and returns a list of all the integers in reversed order. That is 
+ *  if the file looks like this: 
+ *  1
+ *  2
+ *  3
+ *  the returned list has to be [3;2;1] .
+ *  Finally, remember to close any input channel before ending.
+ *) 
+ let read_line (ic:in_channel) : string option =
+  match input_line ic with
+  | l -> Some l
+  | exception End_of_file -> None
+
+
+ let rec readhelp (ic: in_channel) : int list =
+  let x = read_line ic in
+  match x with
+  |Some l -> (int_of_string l):: readhelp ic
+  |None -> []
+
+let read_list_int_rev (f: string): (int list) = 
+  (* please replace the expression [] below with your code *)
+let ic = open_in f in
+let list = readhelp ic in
+let _ = close_in in 
+List.rev list
+
+
+(* Definition of biltrees *)
+type biltree = B of bool   | I of int   | L of int list | T of biltree * char  * biltree
+
+(* Some examples of biltrees *)
+let ex1 = T (T (B true, 'a' , T (I (-34), 'b', L [-21; 53; 12])), 'c', T (I (-18), 'd' , B true))
+let ex2 = T (T (T (T (I 31, 'h', L [9; 34; -45]), 'e', L [70; 58; -36; 28]), 'l', I 3), 'l', T (I 2, 'o', I 49))
+let ex3 = T (T (T (L [9; 4; -1; 0; -5], 'c', B true), 's', B true), '3', T (B false, '2', I (-3)))
+
+
+(* Functions you need to define *)
+        
+let rec count_nodes (p: biltree):int=
+  (* please replace the 0 below with your code *)
+  match p with
+  |B b -> 1
+  |I i -> 1
+  |L l -> 1
+  |T (tl, c, tr) -> 1 + count_nodes(tr) + count_nodes(tl)
+
+
+let rec boolhelp (p: biltree) : int =
+  match p with
+  |B b -> 1
+  |I i -> 0
+  |L l -> 0
+  |T (tl, c, tr) -> boolhelp(tl) + boolhelp(tr)
+
+let rec anding (p:biltree) : bool =
+  match p with
+  |B b -> b
+  |I i -> true
+  |L l -> true
+  |T (tl, c ,tr) -> anding(tl) && anding(tr)
+
+let rec global_and (p: biltree): bool option =
+  (* please replace the None below with your code *)
+  if boolhelp(p) < 1
+  then None
+  else Some (anding(p))
+  
+  
+let rec adding(l: int list) : int = 
+  match l with
+  |x::xs -> x + adding(xs)
+  | [] -> 0
+
+let rec sum_lists (p: biltree) : biltree =
+  (* please replace the expression B true below with your code *)
+  match p with 
+  |B b -> B b
+  |I i -> I i
+  |L l -> I (adding (l))
+  |T (tl, c, tr) -> T(sum_lists(tl), c, sum_lists(tr))
+
+let rec f_on_all_ints (f : int -> int) (b: biltree): biltree =
+  (* please replace the expression B true below with your code *)
+  match b with
+  |B b -> B b
+  |I i -> I (f i)
+  |L l -> L (List.map f l)
+  |T (tl, c ,tr) -> T(f_on_all_ints f tl, c , f_on_all_ints f tr)
+ 
+let rec string_of_intlist (l: int list) : string =
+  match l with
+  |x::xs -> (string_of_int x)^ string_of_intlist(xs)
+  | [] -> ""
+
+let rec tostring_mlr (b : biltree): string =
+  (* please replace the empty string "" below with your code *)
+match b with
+|B b -> (string_of_bool b)
+|I i -> (string_of_int i)
+|L l -> (string_of_intlist(l))
+|T (tl, c, tr) -> (Char.escaped c) ^ (tostring_mlr tl) ^ (tostring_mlr tr)
+
+
+STUDENT
+Kevin Tu
+AUTOGRADER SCORE
+50.0 / 50.0
